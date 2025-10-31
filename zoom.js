@@ -1,113 +1,66 @@
 // --- Filtra o Zoom do número do Fluig pelo usuário logado e adiciona busca inteligente ---
 function setZoomNumFluigFilter() {
-    const userLogado = parent.WCMAPI.user; 
+    const userLogado = $("#txtCodSolicitante").val();
     const zoomObj = window["zoomNumFluig"];
-    if (!zoomObj || !zoomObj.dataset) return;
 
-    // Pegar grupos do usuário logado
-    const c1 = DatasetFactory.createConstraint("colleagueName", userLogado, userLogado, ConstraintType.MUST);
-    const dataset = DatasetFactory.getDataset("ds_Amara_Copia", null, [c1], null);
+    if (zoomObj && zoomObj.dataset) {
+        const allItems = zoomObj.dataset;
 
-    let gruposUsuario = [];
-    if (dataset && dataset.values && dataset.values.length > 0) {
-        dataset.values.forEach(row => {
-            if (row.groupId) gruposUsuario.push(row.groupId.trim());
-        });
-    }
+        // --- Filtra apenas solicitações do usuário logado ---
+        const itensFiltrados = allItems.filter(item => item.codSolicitante === userLogado);
 
-    // Ignorar grupos que não dão acesso
-    const gruposIgnorar = ["DefaultGroup-1"];
-    const gruposUsuarioValidos = gruposUsuario.filter(g => !gruposIgnorar.includes(g));
+        // --- Limpa o zoom e adiciona apenas os itens filtrados ---
+        zoomObj.clear();
+        itensFiltrados.forEach(item => zoomObj.addItem(item));
 
-    console.log("Grupos válidos do usuário logado:", gruposUsuarioValidos.join(", "));
+        // --- Busca inteligente (filtra por múltiplos campos digitados pelo usuário) ---
+        const $zoomInput = $("input#zoomNumFluig");
+        if ($zoomInput.length) {
+            $zoomInput.off("keyup.customFilter").on("keyup.customFilter", function () {
+                const termo = $(this).val().toLowerCase();
 
-    // Se o usuário não tiver nenhum grupo válido, não mostra nada
-    if (gruposUsuarioValidos.length === 0) {
-        zoomObj.clear(); // limpa o zoom
-        return;
-    }
+                const itensFiltradosPorBusca = itensFiltrados.filter(item => {
+                    return (
+                        (item.txtNumFluig && item.txtNumFluig.toString().toLowerCase().includes(termo)) ||
+                        (item.zoomFornecedor && item.zoomFornecedor.toLowerCase().includes(termo)) ||
+                        (item.zoomResponsavel && item.zoomResponsavel.toLowerCase().includes(termo)) ||
+                        (item.codFornecedor && item.codFornecedor.toString().toLowerCase().includes(termo))
+                    );
+                });
 
-    // Filtrar itens do Zoom
-    const allItems = zoomObj.dataset;
-    const itensFiltrados = allItems.filter(item => {
-        if (!item.txtGruposSolicitante) return false;
-
-        const gruposSolicitante = item.txtGruposSolicitante.split(",").map(g => g.trim());
-
-        // Mostra apenas se houver pelo menos 1 grupo válido em comum
-        return gruposSolicitante.some(g => gruposUsuarioValidos.includes(g));
-    });
-
-    // Limpa o Zoom e adiciona apenas os itens filtrados
-    zoomObj.clear();
-    itensFiltrados.forEach(item => zoomObj.addItem(item));
-
-    // Busca inteligente
-    const $zoomInput = $("input#zoomNumFluig");
-    if ($zoomInput.length) {
-        $zoomInput.off("keyup.customFilter").on("keyup.customFilter", function () {
-            const termo = $(this).val().toLowerCase();
-            const itensFiltradosPorBusca = itensFiltrados.filter(item => {
-                return (
-                    (item.txtNumFluig && item.txtNumFluig.toString().toLowerCase().includes(termo)) ||
-                    (item.zoomFornecedor && item.zoomFornecedor.toLowerCase().includes(termo)) ||
-                    (item.zoomResponsavel && item.zoomResponsavel.toLowerCase().includes(termo)) ||
-                    (item.codFornecedor && item.codFornecedor.toString().toLowerCase().includes(termo))
-                );
+                zoomObj.clear();
+                itensFiltradosPorBusca.forEach(item => zoomObj.addItem(item));
             });
+        }
 
-            zoomObj.clear();
-            itensFiltradosPorBusca.forEach(item => zoomObj.addItem(item));
-        });
-    }
-
-    // Preenche automaticamente o primeiro item (opcional)
-    if (itensFiltrados.length > 0) {
-        setSelectedZoomItem({ inputId: 'zoomNumFluig', ...itensFiltrados[0] });
+        // --- Preenche automaticamente o primeiro item (opcional) ---
+        if (itensFiltrados.length > 0) {
+            setSelectedZoomItem({ inputId: 'zoomNumFluig', ...itensFiltrados[0] });
+        }
     }
 }
-
 
 // --- Ao carregar a página ---
 $(document).ready(() => {
     setTimeout(setZoomNumFluigFilter, 1500);
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // --- Função principal de seleção do Zoom ---
+//--- Função principal de seleção do Zoom ---
 function setSelectedZoomItem(selectedItem) {
     const inputId = selectedItem.inputId;
 
-    if (inputId === "zoomNumFluig") {
-        console.log("Item selecionado:", selectedItem);
+    // --- Função auxiliar para setar o Zoom com retry se necessário ---
+    function setZoomWithRetry(zoomId, value, attempts = 5) {
+        if (window[zoomId] && value) {
+            window[zoomId].setValue(value);
+        } else if (attempts > 0 && value) {
+            setTimeout(() => setZoomWithRetry(zoomId, value, attempts - 1), 300);
+        }
+    }
 
+    // --- Número do Fluig ---
+    if (inputId === "zoomNumFluig") {
         $("#codNumFluig").val(selectedItem.txtNumFluig || "");
         $("#codFilial").val(selectedItem.codFilial || "");
         $("#codCondicaoPagto").val(selectedItem.codCondicaoPagto || "");
@@ -121,10 +74,11 @@ function setSelectedZoomItem(selectedItem) {
 
         validarLimiteAprovador();
 
-        setZoomData("zoomFilial", selectedItem.zoomFilial);
-        setZoomData("zoomCondicaoPagto", selectedItem.zoomCondicaopagto);
-        setZoomData("zoomFornecedor", selectedItem.zoomFornecedor);
-        setZoomData("zoomResponsavel", selectedItem.zoomResponsavel);
+        // --- Todos os Zooms com retry ---
+        setZoomWithRetry("zoomFilial", selectedItem.zoomFilial);
+        setZoomWithRetry("zoomCondicaoPagto", selectedItem.zoomCondicaopagto);
+        setZoomWithRetry("zoomFornecedor", selectedItem.zoomFornecedor);
+        setZoomWithRetry("zoomResponsavel", selectedItem.zoomResponsavel);
 
         if (selectedItem.jsonItens) {
             let itens = JSON.parse(selectedItem.jsonItens);
@@ -137,8 +91,8 @@ function setSelectedZoomItem(selectedItem) {
                     const idx = linha;
 
                     $("#codProduto___" + idx).val(item.codProduto);
-                    $("#zoomProduto___" + idx).val(item.descricao[0] || "").trigger("change");
-                    setZoomData("zoomProduto___" + idx, item.descricao[0] || "");
+                    $("#zoomProduto___" + idx).val(item.descricao[0] || "");
+                    setZoomWithRetry("zoomProduto___" + idx, item.descricao[0] || "");
 
                     $("#unidadeMedida___" + idx).val(item.unidade).attr("title", item.unidade);
                     $("#txtQuantidade___" + idx).val(item.quantidade);
@@ -147,17 +101,16 @@ function setSelectedZoomItem(selectedItem) {
                     let totalItem = item.valorTotal || (parseFloat(item.quantidade || 0) * parseFloat(item.valorUnitario || 0));
                     if (typeof totalItem === 'number') totalItem = totalItem.toFixed(2).replace('.', ',');
                     $("#txtValorTotal___" + idx).val(totalItem);
-
                     totalPedido += parseFloat(totalItem.replace(',', '.'));
 
-                    // --- Apenas o campo de zoom do armazém é preenchido ---
-                    $("#codArmazem___" + idx).val(item.armazem); // continua preenchendo o campo hidden
-                    $("#zoomArmazem___" + idx).val(item.armazem).trigger("change"); // exibe só o código do armazém no zoom
-                    setZoomData("zoomArmazem___" + idx, item.armazem); // define o valor do zoom corretamente
+                    // --- Campos Armazém e Centro de Custo ---
+                    $("#codArmazem___" + idx).val(item.armazem);
+                    $("#zoomArmazem___" + idx).val(item.armazem);
+                    setZoomWithRetry("zoomArmazem___" + idx, item.armazem);
 
                     $("#codCentroCusto___" + idx).val(item.centroCusto);
-                    $("#zoomCentroCusto___" + idx).val(item.centroCusto).trigger("change");
-                    setZoomData("zoomCentroCusto___" + idx, item.centroCusto);
+                    $("#zoomCentroCusto___" + idx).val(item.centroCusto);
+                    setZoomWithRetry("zoomCentroCusto___" + idx, item.centroCusto);
 
                     $("#dtEntrega___" + idx).val(item.dtEntrega);
 
@@ -186,7 +139,14 @@ function setSelectedZoomItem(selectedItem) {
     // --- Filial ---
     else if (inputId === "zoomFilial") {
         $("#codFilial").val(selectedItem["CODIGO"]);
+        setZoomWithRetry("zoomFilial", selectedItem["CODIGO"]);
         aplicarFiltroFilialResponsavel();
+    }
+    
+    
+    else if (selectedItem.inputId.includes('zoomCentroCusto')) {
+        var index = selectedItem.inputId.split('___')[1];
+        $("#codCentroCusto___" + index).val(selectedItem["centroCusto"]);
     }
 
     // --- Fornecedor ---
@@ -194,28 +154,35 @@ function setSelectedZoomItem(selectedItem) {
         $("#codFornecedor").val(selectedItem["codigoFornecedor"]);
         $("#txtCPFCNPJ").val(selectedItem["nomeFornecedor"].split('-')[1]);
         $("#txtLojaFornecedor").val(selectedItem["lojaFornecedor"]);
+        setZoomWithRetry(inputId, selectedItem["codigoFornecedor"]);
     }
 
     // --- Condição de Pagamento ---
     else if (inputId.includes('zoomCondicaoPagto')) {
         $("#codCondicaoPagto").val(selectedItem["codCondicaoPgto"]);
+        setZoomWithRetry(inputId, selectedItem["codCondicaoPgto"]);
     }
 
     // --- Produto ---
     else if (inputId.includes('zoomProduto')) {
-        var index = selectedItem.inputId.split('___')[1];
+        var index = inputId.split('___')[1];
         $("#codProduto___" + index).val(selectedItem["codProduto"]);
-        $("#unidadeMedida___" + index).val(selectedItem["unidadeMedida"]);
-        $("#unidadeMedida___" + index).attr("title", selectedItem["descUnidadeMedida"]);
+        $("#unidadeMedida___" + index).val(selectedItem["unidadeMedida"]).attr("title", selectedItem["descUnidadeMedida"]);
+        setZoomWithRetry(inputId, selectedItem["codProduto"]);
     }
 
     // --- Armazém ---
     else if (inputId.includes('zoomArmazem')) {
-        var index = selectedItem.inputId.split('___')[1];
+        var index = inputId.split('___')[1];
         $("#codArmazem___" + index).val(selectedItem["codArmazem"]);
+        setZoomWithRetry(inputId, selectedItem["codArmazem"]);
         reloadZoomFilterValues("zoomProduto___" + index, "armazemPadrao," + selectedItem["codArmazem"]);
     }
+
+    // --- Centro de Custo ---
+   
 }
+
 
 // --- Demais funções auxiliares (mantidas iguais ao seu código atual) ---
 
